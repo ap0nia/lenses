@@ -268,3 +268,180 @@ test('reflected lens with nested objects resolves correct paths', () => {
   expect(reflected.focus('password.password_confirm').interop().name).toBe('password.passwordConfirm');
   expect(reflected.focus('nest2.names.name').interop().name).toBe('usernameNest.name');
 });
+
+test.skip('reflected lens with deeply nested objects resolves correct paths', () => {
+  const { result } = renderHook(() => {
+    const form = useForm<Input>();
+    const lens = useLens(form);
+    return lens;
+  });
+
+  const lens = result.current;
+
+  type Input = {
+    a: {
+      b: {
+        d: string;
+      };
+    };
+    x: {
+      y: string;
+    };
+  };
+
+  type Output = {
+    a: {
+      b: {
+        c: string;
+      };
+    };
+    x: {
+      y: {
+        z: string;
+      };
+    };
+  };
+
+  const reflected: Lens<Output> = lens.reflect((_, l) => ({
+    a: {
+      b: {
+        c: l.focus('a.b.d'),
+      },
+    },
+    x: {
+      y: {
+        z: l.focus('x.y'),
+      },
+    },
+  }));
+
+  expect(reflected.focus('a.b.c').interop().name).toBe('a.b.a.b.d');
+  expect(reflected.focus('x.y.z').interop().name).toBe('x.y.x.y');
+});
+
+test.skip('only adjusts lens path nested within object once', () => {
+  type Input = {
+    password: {
+      password: string;
+      passwordConfirm: string;
+    };
+    usernameNest: {
+      name: string;
+    };
+  };
+
+  type DataLens = {
+    password: {
+      password_base: string;
+      password_confirm: string;
+    };
+    nest2: {
+      names: {
+        name: string;
+      };
+    };
+  };
+
+  const { result } = renderHook(() => {
+    const form = useForm<Input>();
+    const lens = useLens({ control: form.control });
+    return lens;
+  });
+
+  const lens = result.current;
+
+  const reflected: Lens<DataLens> = lens.reflect((_, l) => ({
+    password: {
+      password_base: l.focus('password.password'),
+      password_confirm: l.focus('password.passwordConfirm'),
+    },
+    nest2: {
+      names: l.focus('usernameNest'),
+    },
+  }));
+
+  // The point of a boolean property within a lens is to prevent its path from being updated
+  // outside of interop.
+
+  reflected.focus('password.password_base');
+  reflected.focus('password.password_confirm');
+
+  expect(reflected.focus('password.password_base').interop().name).toBe('password.password.password');
+  expect(reflected.focus('password.password_confirm').interop().name).toBe('password.password.passwordConfirm');
+  expect(reflected.focus('nest2.names.name').interop().name).toBe('nest2.usernameNest.name');
+});
+
+test.skip('incorrectly appends path multiple times if boolean flag is wrong', () => {
+  type Input = {
+    password: {
+      password: string;
+      passwordConfirm: string;
+    };
+    usernameNest: {
+      name: string;
+    };
+  };
+
+  type DataLens = {
+    password: {
+      password_base: string;
+      password_confirm: string;
+    };
+    nest2: {
+      names: {
+        name: string;
+      };
+    };
+  };
+
+  const { result } = renderHook(() => {
+    const form = useForm<Input>();
+    const lens = useLens({ control: form.control });
+    return lens;
+  });
+
+  const lens = result.current;
+
+  const reflected: Lens<DataLens> = lens.reflect((_, l) => ({
+    password: {
+      password_base: l.focus('password.password'),
+      password_confirm: l.focus('password.passwordConfirm'),
+    },
+    nest2: {
+      names: l.focus('usernameNest'),
+    },
+  }));
+
+  // The point of a boolean property within a lens is to prevent its path from being updated
+  // outside of interop.
+
+  const a = reflected.focus('password.password_base');
+  const b = reflected.focus('password.password_confirm');
+  const c = reflected.focus('nest2.names');
+
+  // @ts-expect-error Internal API.
+  a.overridden = false;
+
+  // @ts-expect-error Internal API.
+  b.overridden = false;
+
+  // @ts-expect-error Internal API.
+  c.overridden = false;
+
+  reflected.focus('password.password_base');
+  reflected.focus('password.password_confirm');
+  reflected.focus('nest2.names');
+
+  // Since the boolean flag was forcefully unset, the proxy will re-append the path to the beginning.
+  // This will make the paths wrong. Therefore, the boolean flag is required to de-dupe this operation.
+
+  expect(reflected.focus('password.password_base').interop().name).not.toBe('password.password.password');
+  expect(reflected.focus('password.password_confirm').interop().name).not.toBe('password.password.passwordConfirm');
+  expect(reflected.focus('nest2.names.name').interop().name).not.toBe('nest2.usernameNest.name');
+
+  // Wrongly generated names.
+
+  expect(reflected.focus('password.password_base').interop().name).toBe('password.password.password.password');
+  expect(reflected.focus('password.password_confirm').interop().name).toBe('password.password.password.passwordConfirm');
+  expect(reflected.focus('nest2.names.name').interop().name).toBe('nest2.nest2.usernameNest.name');
+});

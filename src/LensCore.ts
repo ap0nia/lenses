@@ -3,6 +3,35 @@ import { type Control, type FieldValues, get, set } from 'react-hook-form';
 import { LensesStorage, type LensesStorageComplexKey } from './LensesStorage';
 import type { Lens } from './types';
 
+/**
+ * To support custom LensCore classes, allow passing in a custom validation function.
+ */
+function defaultIsLens(value?: unknown): value is LensCore<any> {
+  return value instanceof LensCore;
+}
+
+/**
+ * Recursively capture paths leading up to leaf lenses.
+ */
+function recursiveLensOverride(target: any, path: string, isLens = defaultIsLens) {
+  return new Proxy(target, {
+    get: (target, p: string, _receiver) => {
+      const separator = path || p ? '.' : '';
+
+      if (!isLens(target[p])) {
+        return recursiveLensOverride(target[p], path + separator + p, isLens);
+      }
+
+      if (!target[p].overridden) {
+        target[p].path = path + separator + target[p].path;
+        target[p].overridden = true;
+      }
+
+      return target[p];
+    },
+  });
+}
+
 export interface LensCoreInteropBinding<T extends FieldValues> {
   control: Control<T>;
   name: string | undefined;
@@ -18,14 +47,19 @@ export class LensCore<T extends FieldValues> {
   public path: string;
   public cache?: LensesStorage<T> | undefined;
 
+  /**
+   * When it is nested within an object, its path needs to be updated once.
+   */
+  overridden = false;
+
   protected isArrayItemReflection?: boolean;
   protected override?: Record<string, LensCore<T>> | [Record<string, LensCore<T>>];
   protected interopCache?: LensCoreInteropBinding<T>;
   protected reflectedKey?: LensesStorageComplexKey;
 
-  public isLens(value: unknown): value is LensCore<T> {
+  public isLens = (value: unknown): value is LensCore<T> => {
     return value instanceof this.constructor;
-  }
+  };
 
   constructor(control: Control<T>, path: string, cache?: LensesStorage<T> | undefined) {
     this.control = control;
@@ -77,6 +111,10 @@ export class LensCore<T extends FieldValues> {
         overriddenLens = overriddenLensOrNested;
       } else if (overriddenLensOrNested) {
         overriddenLens = this.reflect(() => overriddenLensOrNested);
+
+        const override = recursiveLensOverride(overriddenLens.override, nestedPath, this.isLens);
+
+        overriddenLens.override = override;
       } else {
         const result = new LensCore(this.control, nestedPath, this.cache);
         this.cache?.set(result, nestedPath);
