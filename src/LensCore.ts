@@ -23,10 +23,6 @@ export class LensCore<T extends FieldValues> {
   protected interopCache?: LensCoreInteropBinding<T>;
   protected reflectedKey?: LensesStorageComplexKey;
 
-  public isLens(value: unknown): value is LensCore<T> {
-    return value instanceof this.constructor;
-  }
-
   constructor(control: Control<T>, path: string, cache?: LensesStorage<T> | undefined) {
     this.control = control;
     this.path = path;
@@ -37,7 +33,7 @@ export class LensCore<T extends FieldValues> {
     control: Control<TFieldValues>,
     cache?: LensesStorage<TFieldValues>,
   ): Lens<TFieldValues> {
-    return new LensCore(control, '', cache) as unknown as Lens<TFieldValues>;
+    return new this(control, '', cache) as unknown as Lens<TFieldValues>;
   }
 
   public focus(prop: string | number): LensCore<T> {
@@ -61,7 +57,7 @@ export class LensCore<T extends FieldValues> {
 
     if (Array.isArray(this.override)) {
       const [template] = this.override;
-      const result = new LensCore(this.control, nestedPath, this.cache);
+      const result = new (this.constructor as typeof LensCore)(this.control, nestedPath, this.cache);
       result.isArrayItemReflection = true;
       result.override = template;
 
@@ -69,23 +65,25 @@ export class LensCore<T extends FieldValues> {
 
       return result;
     } else if (this.override) {
-      const overriddenLensOrNested: LensCore<T> | Record<string, LensCore<T>> | undefined = get(this.override, propString);
+      const overriddenLensOrNested = get(this.override, propString);
 
       let overriddenLens: LensCore<T> | undefined;
 
-      if (this.isLens(overriddenLensOrNested)) {
+      if (typeof overriddenLensOrNested?.reflect === 'function') {
         overriddenLens = overriddenLensOrNested;
       } else if (overriddenLensOrNested) {
         overriddenLens = this.reflect(() => overriddenLensOrNested);
-      } else {
-        const result = new LensCore(this.control, nestedPath, this.cache);
+      }
+
+      if (!overriddenLens) {
+        const result = new (this.constructor as typeof LensCore)(this.control, nestedPath, this.cache);
         this.cache?.set(result, nestedPath);
         return result;
       }
 
       if (this.isArrayItemReflection) {
         const arrayItemNestedPath = `${this.path}.${overriddenLens.path}`;
-        const result = new LensCore(this.control, arrayItemNestedPath, this.cache);
+        const result = new (this.constructor as typeof LensCore)(this.control, arrayItemNestedPath, this.cache);
         this.cache?.set(result, arrayItemNestedPath);
         return result;
       } else {
@@ -94,7 +92,7 @@ export class LensCore<T extends FieldValues> {
       }
     }
 
-    const result = new LensCore(this.control, nestedPath, this.cache);
+    const result = new (this.constructor as typeof LensCore)(this.control, nestedPath, this.cache);
     this.cache?.set(result, nestedPath);
     return result;
   }
@@ -112,7 +110,7 @@ export class LensCore<T extends FieldValues> {
     }
 
     const nestedCache = new LensesStorage(this.control);
-    const template = new LensCore(this.control, this.path, nestedCache);
+    const template = new (this.constructor as typeof LensCore)(this.control, this.path, nestedCache);
 
     const dictionary = new Proxy(
       {},
@@ -130,7 +128,7 @@ export class LensCore<T extends FieldValues> {
     const override = getter(dictionary, template);
 
     if (Array.isArray(override)) {
-      const result = new LensCore(this.control, this.path, this.cache);
+      const result = new (this.constructor as typeof LensCore)(this.control, this.path, this.cache);
       template.path = '';
       result.override = getter(dictionary, template);
       result.reflectedKey = getter;
