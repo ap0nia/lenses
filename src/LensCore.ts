@@ -65,7 +65,15 @@ export class LensCore<T extends FieldValues> {
 
       return result;
     } else if (this.override) {
-      const overriddenLens: LensCore<T> | undefined = get(this.override, propString);
+      const overriddenLensOrNested = get(this.override, propString);
+
+      let overriddenLens: LensCore<T> | undefined;
+
+      if (typeof overriddenLensOrNested?.reflect === 'function') {
+        overriddenLens = overriddenLensOrNested;
+      } else if (overriddenLensOrNested) {
+        overriddenLens = this.reflect(() => overriddenLensOrNested);
+      }
 
       if (!overriddenLens) {
         const result = new (this.constructor as typeof LensCore)(this.control, nestedPath, this.cache);
