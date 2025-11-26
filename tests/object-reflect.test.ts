@@ -223,3 +223,42 @@ test('reflected lens handles duplicate key names in different nesting levels', (
 
   expect(reflectedWithDuplicateKeys.focus('nest_id').interop().name).toBe('nest.id');
 });
+
+test.only('nested reflect resolves correct name after focusing', async () => {
+  const { result } = renderHook(() => {
+    const form = useForm<{ a: { b: { c: string } } }>();
+    const lens = useLens({ control: form.control });
+    return lens;
+  });
+
+  const lens = result.current;
+
+  // lens = { b: 'a.b'}
+  const reflected = lens.reflect(({ a }) => ({ b: a.focus('b') }));
+
+  // lens = {}
+  const reReflected = reflected.reflect(({ b }) => ({ c: b.focus('c') }));
+
+  // 
+  expect(reflected.focus('b').interop().name).toBe('a.b');
+
+  expect(reReflected.focus('c').interop().name).toBe('a.b.c');
+});
+
+test.only('nested reflect resolves correct name after focusing', async () => {
+  const { result } = renderHook(() => {
+    const form = useForm<{ a: { b: { a: { x: string }; c: string } } }>();
+    const lens = useLens({ control: form.control });
+    return lens;
+  });
+
+  const lens = result.current;
+
+  const reflected = lens.reflect(({ a }) => ({ b: a.focus('b') }));
+
+  const reReflected = reflected.reflect(({ b }) => ({ c: b.focus('a') }));
+
+  expect(reflected.focus('b').interop().name).toBe('a.b');
+
+  expect(reReflected.focus('c.x').interop().name).toBe('a.b.a.x');
+});

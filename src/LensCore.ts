@@ -103,6 +103,7 @@ export class LensCore<T extends FieldValues> {
 
     const nestedCache = new LensesStorage(this.control);
     const template = new (this.constructor as typeof LensCore)(this.control, this.path, nestedCache);
+    template.override = this.override as any;
 
     const dictionary = new Proxy(
       {},
